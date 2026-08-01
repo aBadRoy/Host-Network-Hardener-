@@ -98,7 +98,8 @@ def build_parser():
                    help="Ports to skip: comma list and/or ranges")
     # --- scan techniques --------------------------------------------------
     p.add_argument("--syn", action="store_true",
-                   help="Use SYN stealth scan where scapy/raw sockets are available")
+                   help="Use SYN stealth scan (nmap -sS when available, else "
+                        "scapy/raw sockets)")
     p.add_argument("--scan-type", choices=["connect", "syn", "ack", "null",
                                            "fin", "xmas"], default="connect",
                    help="TCP scan technique (default connect; ack/null/fin/xmas "
