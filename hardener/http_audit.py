@@ -7,7 +7,6 @@ and risk layers.
 import re
 import socket
 import ssl
-from urllib.parse import urljoin
 
 from .config import SENSITIVE_PATHS, SECURITY_HEADERS
 from .models import HttpInfo

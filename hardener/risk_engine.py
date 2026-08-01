@@ -5,8 +5,6 @@ the score using standard banding. Findings are correlated and deduplicated
 before scoring to reduce false positives.
 """
 
-from .models import Finding
-
 SEVERITY_BANDS = [
     (0.0, 1.0, "informational"),
     (1.0, 4.0, "low"),

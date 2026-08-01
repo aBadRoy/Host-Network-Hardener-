@@ -56,7 +56,7 @@ def probe_ftp(ip, port, timeout):
                 out["flags"].append("ftps_supported")
         # anonymous login check
         s.sendall(b"USER anonymous\r\n")
-        r1 = _read_banner(s)
+        _ = _read_banner(s)
         s.sendall(b"PASS anonymous@none.invalid\r\n")
         r2 = _read_banner(s)
         if r2.startswith("230") or "logged in" in r2.lower():
@@ -87,7 +87,6 @@ def probe_ssh(ip, port, timeout):
 
 def probe_telnet(ip, port, timeout):
     out = {"version": "", "banners": [], "enumeration": {}}
-    IAC = b"\xff"
     try:
         s = _tcp_socket(timeout)
         s.connect((ip, port))

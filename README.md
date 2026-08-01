@@ -1,5 +1,9 @@
 # Host & Network Hardener
 
+[![CI](https://github.com/aBadRoy/Host-Network-Hardener-/actions/workflows/ci.yml/badge.svg)](https://github.com/aBadRoy/Host-Network-Hardener-/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
+
 A command-line security assessment, hardening and remediation engine for hosts and networks.
 It walks a target through a complete 10-phase workflow — from scope validation and discovery
 through to CVE correlation, risk scoring and remediation guidance — and exports reports in
@@ -44,7 +48,14 @@ multiple formats.
 ```bash
 git clone https://github.com/aBadRoy/Host-Network-Hardener-.git
 cd Host-Network-Hardener-
+
+# Run without installing
 pip install -r requirements.txt
+python main.py --help
+
+# Or install as a package (adds the `hardener` console command)
+pip install .
+hardener --help
 ```
 
 ---
@@ -118,6 +129,24 @@ python main.py -t 127.0.0.1 --output-dir my_reports
 
 ---
 
+## Development & testing
+
+```bash
+# Install with dev dependencies (pytest, pyflakes)
+python -m pip install -e ".[dev]"
+
+# Run the test suite
+python -m pytest
+
+# Lint check
+python -m pyflakes hardener main.py lab_mock.py conftest.py tests
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines and
+[SECURITY.md](SECURITY.md) for vulnerability reporting.
+
+---
+
 ## Local testing with the mock lab
 
 A mock target lab is included so you can exercise the full pipeline without touching
@@ -156,6 +185,11 @@ network_hardener/
 ├── lab_mock.py                # local mock target lab (testing)
 ├── scope.json                 # example scope configuration
 ├── requirements.txt
+├── pyproject.toml             # packaging & tool config
+├── LICENSE                    # MIT license
+├── conftest.py                # pytest bootstrap
+├── .github/workflows/ci.yml   # CI (lint + tests)
+├── tests/                     # pytest test suite
 └── hardener/
     ├── cli.py                 # argument parsing
     ├── hardener.py            # workflow orchestrator
@@ -182,4 +216,8 @@ network_hardener/
 
 ## License
 
-See the repository for license details.
+Released under the [MIT License](LICENSE).
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for the full version history.

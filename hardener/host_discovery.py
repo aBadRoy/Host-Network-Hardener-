@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .config import TCP_PING_PORTS
 from .models import Host
-from .utils import fmt_time, info, low_pri, ok, warn
+from .utils import fmt_time, info, ok, warn
 
 # ICMP socket payload (arbitrary echo data)
 _PING_DATA = b"NetworkHardenerProbe0123456789"
@@ -88,7 +88,7 @@ def _parse_icmp_reply(data, ident, seq):
     icmp = data[ihl:]
     if len(icmp) < 8:
         return False
-    icmp_type, _code, _cs, p_ident, p_seq = icmp[0], icmp[1], icmp[2:4], \
+    icmp_type, _, _, p_ident, p_seq = icmp[0], icmp[1], icmp[2:4], \
         int.from_bytes(icmp[4:6], "big"), int.from_bytes(icmp[6:8], "big")
     return icmp_type == 0 and p_ident == ident and p_seq == seq
 

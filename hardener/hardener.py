@@ -7,18 +7,16 @@
 5. Port scanning        10. Risk scoring + reporting + remediation
 """
 
-import os
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from . import config
 from .dns_discovery import discover_host_infrastructure
-from .host_discovery import discover_host, discover_hosts
+from .host_discovery import discover_hosts
 from .http_audit import audit_http
-from .input_handler import expand_targets, parse_targets
+from .input_handler import expand_targets
 from .models import Host, ScanConfig, ScanReport
 from .os_fingerprint import fingerprint_os
-from .port_scanner import scan_tcp_ports, scan_udp_ports, tcp_connect_scan, udp_scan
+from .port_scanner import scan_tcp_ports, scan_udp_ports
 from .remediation import attach_remediation_all
 from .reporting import generate_reports
 from .risk_engine import deduplicate, prioritize, score_all, summary_stats
@@ -27,7 +25,7 @@ from .security_analysis import analyze_host
 from .service_enum import enumerate_port
 from .tls_audit import audit_tls
 from .utils import (Color, elapsed, fmt_time, info, low_pri, ok, out, paint,
-                    set_color, timestamp, vuln, warn)
+                    timestamp, vuln, warn)
 
 TLS_PORTS = {443, 8443, 9443, 5986, 636, 993, 995, 465}
 HTTP_PORTS = {80, 443, 8080, 8443, 9443}
@@ -241,7 +239,7 @@ class Hardener:
         self.report.duration = fmt_time(elapsed(start))
         if not aborted:
             paths = generate_reports(self.report, output_dir=self.cfg.output_dir)
-            ok(f"Reports generated:")
+            ok("Reports generated:")
             for fmt_, path in paths.items():
                 low_pri(f"  {fmt_.upper():4s}: {path}")
         else:

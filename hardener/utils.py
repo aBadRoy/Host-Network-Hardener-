@@ -47,8 +47,8 @@ def sanitize_text(text):
     if not isinstance(text, str):
         text = str(text)
     text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", " ", text)
+    enc = sys.stdout.encoding or "ascii"
     try:
-        enc = sys.stdout.encoding or "ascii"
         text.encode(enc, errors="strict")
     except UnicodeEncodeError:
         text = text.encode(enc, errors="replace").decode(enc, errors="replace")
@@ -109,8 +109,11 @@ def is_valid_ip(text):
 
 
 def is_valid_cidr(text):
+    text = text.strip()
+    if "/" not in text:
+        return False
     try:
-        ipaddress.ip_network(text.strip(), strict=False)
+        ipaddress.ip_network(text, strict=False)
         return True
     except ValueError:
         return False

@@ -4,9 +4,7 @@ A high-trust CONNECT scan plus optional SYN stealth and UDP probes determine
 open/closed/filtered states for the configured port set.
 """
 
-import random
 import socket
-import struct
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 

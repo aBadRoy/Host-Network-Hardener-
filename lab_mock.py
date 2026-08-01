@@ -12,7 +12,6 @@ import threading
 import time
 
 import cryptography.x509 as x509
-from cryptography import x509 as cx509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID

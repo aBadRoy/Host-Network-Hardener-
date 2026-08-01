@@ -8,7 +8,7 @@ import ipaddress
 from urllib.parse import urlparse
 
 from .models import Target
-from .utils import host_to_ip, is_valid_cidr, is_valid_hostname, is_valid_ip, normalize_url_target
+from .utils import host_to_ip, is_valid_cidr, is_valid_hostname, is_valid_ip
 
 MAX_TARGETS = 500
 

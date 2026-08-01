@@ -4,11 +4,10 @@ Estimates whether a host runs Windows, Linux, BSD, macOS or is an embedded
 appliance, and attaches a confidence score.
 """
 
-import re
 import socket
 import struct
 
-from .utils import info, low_pri, warn
+from .utils import info, low_pri
 
 # TTL heuristics per OS family (first hop typical values)
 TTL_HINTS = [

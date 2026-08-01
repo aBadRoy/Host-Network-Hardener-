@@ -5,8 +5,6 @@ headers, exposed admin panels, directory listing, open databases, and CVE
 correlation against discovered software versions.
 """
 
-import re
-
 from .config import INSECURE_SERVICES, SECURITY_HEADERS
 from .cve_db import display_name, match_cves, match_software_aliases
 from .models import Finding
