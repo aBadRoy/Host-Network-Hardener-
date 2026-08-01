@@ -6,9 +6,9 @@ banner/fingerprinting -> OS fingerprinting -> security analysis -> CVE
 correlation -> risk scoring -> reporting -> remediation guidance.
 """
 
-__version__ = "1.0.0"
-__author__ = "network_hardener"
-
+from .config import VERSION as __version__
 from .hardener import Hardener
+
+__author__ = "D1"
 
 __all__ = ["Hardener", "__version__"]

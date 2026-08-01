@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08
+
 ### Added
 
 - MIT license.
@@ -15,16 +17,6 @@ All notable changes to this project are documented here. The format is based on
 - Pytest test suite covering CLI, reporting, CVE DB, input handling, models,
   risk engine, scope validation and utilities.
 - Contribution, security and changelog documentation.
-
-### Changed
-
-- `is_valid_cidr` now requires an explicit prefix (e.g. `10.0.0.0/8`); bare IPs
-  are rejected.
-
-## [1.1.0] - 2026-08
-
-### Added
-
 - Verbose and debug levels: `-v/-vv/-vvv` and `-d/-dd/-ddd` (nmap-style)
   with thread-safe, leveled console output.
 - Append-only audit trail: `audit.log` per run, one line per action
@@ -43,6 +35,11 @@ All notable changes to this project are documented here. The format is based on
   `--version-intensity 0-9`.
 - `--randomize` host/port scan order (rustscan/masscan-style).
 - `--exclude` repeatable target/IP/CIDR exclusion and YAML scope-file support.
+
+### Changed
+
+- `is_valid_cidr` now requires an explicit prefix (e.g. `10.0.0.0/8`); bare IPs
+  are rejected.
 
 ## [1.0.0] - 2026-07
 
