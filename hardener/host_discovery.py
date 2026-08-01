@@ -4,6 +4,7 @@ Uses ICMP Echo (ping subprocess fallback on Windows), TCP SYN/connect ping and
 HTTP/HTTPS probing. Reduces wasted traffic against offline systems.
 """
 
+import os
 import re
 import shutil
 import socket
@@ -47,20 +48,25 @@ def icmp_ping(ip, timeout=2.0, count=1):
     except OSError:
         pass
     # --- ping binary fallback -----------------------------------------------
-    exe = "ping"
-    params = ["-n", str(count), "-w", str(int(timeout * 1000))]
-    if not shutil.which(exe):
-        exe = "/bin/ping"
-        params = ["-c", str(count), "-W", str(int(timeout))]
     try:
-        proc = subprocess.run([exe, *params, ip], capture_output=True,
-                              text=True, timeout=timeout + 3, creationflags=0)
+        proc = subprocess.run([*_ping_command(count, timeout), ip],
+                              capture_output=True, text=True,
+                              timeout=timeout + 3, creationflags=0)
         m = re.search(r"time[=<]\s*([0-9.]+)\s*ms", proc.stdout, re.IGNORECASE)
         if m:
             return float(m.group(1)) / 1000.0
     except (OSError, subprocess.TimeoutExpired):
         pass
     return None
+
+
+def _ping_command(count, timeout):
+    """Build a platform-appropriate ping command (exe, flags)."""
+    if os.name == "nt":
+        return ["ping", "-n", str(count), "-w", str(int(timeout * 1000))]
+    if shutil.which("ping"):
+        return ["ping", "-c", str(count), "-W", str(int(timeout))]
+    return ["/bin/ping", "-c", str(count), "-W", str(int(timeout))]
 
 
 def _icmp_packet(ident, seq):

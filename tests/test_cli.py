@@ -4,7 +4,7 @@ import argparse
 
 import pytest
 
-from hardener.cli import build_parser, parse_port_list
+from hardener.cli import build_parser, parse_port_list, resolve_scan_type
 
 
 def test_parse_port_list_simple():
@@ -114,3 +114,26 @@ def test_parser_exclude_ports():
     args = build_parser().parse_args(["--exclude-ports", "22,80-82",
                                       "-t", "127.0.0.1"])
     assert args.exclude_ports == [22, 80, 81, 82]
+
+
+def test_parser_nmap_flag_default():
+    args = build_parser().parse_args(["-t", "127.0.0.1"])
+    assert args.use_nmap is None
+
+
+def test_parser_nmap_flag_on_and_off():
+    args = build_parser().parse_args(["--nmap", "-t", "127.0.0.1"])
+    assert args.use_nmap is True
+    args = build_parser().parse_args(["--no-nmap", "-t", "127.0.0.1"])
+    assert args.use_nmap is False
+
+
+def test_resolve_scan_type_syn_from_flag_and_aggressive():
+    assert resolve_scan_type(False, True, "connect") == "syn"
+    assert resolve_scan_type(True, True, "connect") == "syn"
+
+
+def test_resolve_scan_type_keeps_explicit_choice():
+    assert resolve_scan_type(True, True, "ack") == "ack"
+    assert resolve_scan_type(True, False, "null") == "null"
+    assert resolve_scan_type(False, False, "connect") == "connect"

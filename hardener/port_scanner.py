@@ -255,8 +255,13 @@ def _scan_one_udp(ip, port, timeout, retries, limiter):
 def scan_tcp_ports(ip, ports, timeout=2.0, threads=50, use_syn=False,
                    progress_label="", scan_type="connect", retries=0,
                    limiter=None, scan_delay=0.0, randomize=False,
-                   stats_every=0, show_open_only=False, show_reason=False):
-    """Scan a list of TCP ports; returns list of PortResult."""
+                   stats_every=0, show_open_only=False, show_reason=False,
+                   deadline=0.0):
+    """Scan a list of TCP ports; returns list of PortResult.
+
+    If `deadline` (epoch seconds) is given, ports past the deadline are
+    skipped so a slow target can never stall the run indefinitely.
+    """
     results = []
     label = progress_label or ip
     work = list(ports)
@@ -266,9 +271,15 @@ def scan_tcp_ports(ip, ports, timeout=2.0, threads=50, use_syn=False,
     started = time.time()
     last_stats = time.time()
     done = 0
+    skipped = 0
     with ThreadPoolExecutor(max_workers=threads) as pool:
-        futures = {pool.submit(_scan_one_tcp, ip, p, timeout, scan_type,
-                               retries, limiter, scan_delay): p for p in work}
+        futures = {}
+        for p in work:
+            if deadline and time.time() > deadline:
+                skipped = total - done - len(futures)
+                break
+            futures[pool.submit(_scan_one_tcp, ip, p, timeout, scan_type,
+                                retries, limiter, scan_delay)] = p
         for fut in as_completed(futures):
             try:
                 results.append(fut.result())
@@ -281,6 +292,8 @@ def scan_tcp_ports(ip, ports, timeout=2.0, threads=50, use_syn=False,
                 v_ok(1, f"  [{label}] progress: {done}/{total} ports, "
                         f"{rate:.1f} pps, {elapsed_:.1f}s")
                 last_stats = time.time()
+    if skipped:
+        v_ok(1, f"  [{label}] host-timeout reached; {skipped} port(s) not scanned.")
     open_ports = sorted(r.port for r in results if r.state == "open")
     if open_ports:
         ok(f"{label}: {len(open_ports)} open TCP port(s): {open_ports}")

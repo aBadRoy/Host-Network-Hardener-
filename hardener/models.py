@@ -133,6 +133,7 @@ class ScanConfig:
     grepable_path: str = ""             # -oG output file
     exclude_list: List[str] = field(default_factory=list)
     scan_delay: float = 0.0             # per-port delay from -T template
+    use_nmap: bool = True               # prefer nmap backend when on PATH
 
 
 @dataclass

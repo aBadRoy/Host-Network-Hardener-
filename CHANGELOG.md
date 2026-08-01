@@ -6,11 +6,29 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- Optional **nmap backend**: when the `nmap` binary is on PATH (Kali, audit
+  distros) port scanning is delegated to nmap (`-sT`/`-sS`, `-sU`, `-sV`,
+  per-host timeouts) and its XML output is parsed into results. Control with
+  `--nmap` / `--no-nmap` (nmap is preferred by default when available).
+- `--host-timeout` is now enforced: the socket fallback stops scheduling new
+  probes once the deadline passes, and the nmap backend passes the limit to
+  nmap itself, so a slow or unresponsive host can no longer stall a run.
+
+### Changed
+
+- `-A` / `--syn` now switch the TCP technique to SYN (`-sS` via nmap) instead
+  of silently continuing with a connect scan when raw sockets are unavailable.
+
 ### Fixed
 
 - Grepable output (`-oG`) no longer breaks across lines when a service banner
   contains embedded newlines (e.g. Telnet negotiation sequences); banners are
   now collapsed to a single line.
+- The `ping` binary fallback in host discovery now uses POSIX flags
+  (`-c`/`-W`) on Linux/macOS instead of Windows `-n`/`-w`, so ICMP discovery
+  works correctly on Kali and other Unix-like systems.
 
 ## [1.1.0] - 2026-08
 

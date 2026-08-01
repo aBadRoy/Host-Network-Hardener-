@@ -19,6 +19,7 @@ from .host_discovery import discover_hosts
 from .http_audit import audit_http
 from .input_handler import expand_targets
 from .models import Host, ScanConfig, ScanReport
+from .nmap_engine import nmap_available, nmap_tcp_scan, nmap_udp_scan
 from .os_fingerprint import fingerprint_os
 from .port_scanner import scan_tcp_ports, scan_udp_ports
 from .ratelimit import RateLimiter
@@ -160,26 +161,49 @@ class Hardener:
         # 5. Port scanning
         info("Step 4/10 - Port scanning")
         ports = self.cfg.ports or config.DEFAULT_PORTS
+        use_nmap = self.cfg.use_nmap and nmap_available()
+        if use_nmap:
+            v_info(1, "nmap backend detected on PATH; using nmap for port "
+                       "scanning (fall back with --no-nmap).")
         for h in alive_hosts:
-            h.ports = scan_tcp_ports(
-                h.ip, ports, timeout=self.cfg.timeout, threads=self.cfg.threads,
-                use_syn=self.cfg.syn_scan, progress_label=h.ip,
-                scan_type=self.cfg.scan_type, retries=self.cfg.max_retries,
-                limiter=self.limiter, scan_delay=self.cfg.scan_delay,
-                randomize=self.cfg.randomize, stats_every=self.cfg.stats_every,
-                show_open_only=self.cfg.show_open_only,
-                show_reason=self.cfg.show_reason,
-            )
+            deadline = (time.time() + self.cfg.host_timeout
+                        if self.cfg.host_timeout > 0 else 0)
+            if use_nmap:
+                h.ports = nmap_tcp_scan(
+                    h.ip, ports, timeout=self.cfg.timeout,
+                    timing=self.cfg.timing, scan_type=self.cfg.scan_type,
+                    retries=self.cfg.max_retries,
+                    version_detect=self.cfg.version_intensity > 0,
+                    host_timeout=self.cfg.host_timeout,
+                )
+            else:
+                h.ports = scan_tcp_ports(
+                    h.ip, ports, timeout=self.cfg.timeout, threads=self.cfg.threads,
+                    use_syn=self.cfg.syn_scan, progress_label=h.ip,
+                    scan_type=self.cfg.scan_type, retries=self.cfg.max_retries,
+                    limiter=self.limiter, scan_delay=self.cfg.scan_delay,
+                    randomize=self.cfg.randomize, stats_every=self.cfg.stats_every,
+                    show_open_only=self.cfg.show_open_only,
+                    show_reason=self.cfg.show_reason, deadline=deadline,
+                )
             open_tcp = [r.port for r in h.ports if r.state == "open"]
             self._log("STAGE5", "port_scan", target=h.ip,
                            result=f"{len(open_tcp)} open ports", ports=",".join(map(str, open_tcp)))
             if self.cfg.udp_scan:
-                h.ports += scan_udp_ports(
-                    h.ip, self.cfg.udp_ports or config.DEFAULT_UDP_PORTS,
-                    timeout=self.cfg.timeout, progress_label=h.ip,
-                    retries=self.cfg.max_retries, limiter=self.limiter,
-                    randomize=self.cfg.randomize, show_reason=self.cfg.show_reason,
-                )
+                if use_nmap:
+                    h.ports += nmap_udp_scan(
+                        h.ip, self.cfg.udp_ports or config.DEFAULT_UDP_PORTS,
+                        timeout=self.cfg.timeout, timing=self.cfg.timing,
+                        retries=self.cfg.max_retries,
+                        host_timeout=self.cfg.host_timeout,
+                    )
+                else:
+                    h.ports += scan_udp_ports(
+                        h.ip, self.cfg.udp_ports or config.DEFAULT_UDP_PORTS,
+                        timeout=self.cfg.timeout, progress_label=h.ip,
+                        retries=self.cfg.max_retries, limiter=self.limiter,
+                        randomize=self.cfg.randomize, show_reason=self.cfg.show_reason,
+                    )
 
         # 6. Service enumeration
         info("Step 5/10 - Service enumeration")

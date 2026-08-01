@@ -20,7 +20,7 @@ multiple formats.
   1. Input intake & scope validation (authorization gate)
   2. DNS & infrastructure discovery (A/AAAA/MX/NS/TXT/SOA/CNAME, subdomains, CDN/WAF detection)
   3. Host discovery (ICMP, TCP SYN/ACK ping, UDP ping, HTTP probe; `-sn` ping sweep)
-  4. Port scanning — TCP connect, TCP SYN (scapy) plus stateless **ACK, NULL, FIN and XMAS**
+  4. Port scanning — nmap-style **TCP connect, SYN** plus stateless **ACK, NULL, FIN, XMAS**
      scans and UDP; **full 0–65535 range supported** with `-p-`
   5. Service enumeration — per-protocol probes (SSH, FTP, Telnet, SMTP, POP3, IMAP, LDAP,
      SMB, Kerberos, Oracle, MySQL, PostgreSQL, Redis, MongoDB, Elasticsearch, Memcached,
@@ -32,6 +32,9 @@ multiple formats.
   9. Risk scoring & prioritization
   10. Report generation & remediation guidance
 
+- **nmap backend**: when the `nmap` binary is on PATH (Kali, most audit distros) port
+  scanning is delegated to nmap (`-sT`/`-sS`, `-sU`, `-sV`, per-host timeouts) with an
+  automatic socket fallback; disable with `--no-nmap`
 - **Scan techniques**: `-sV` version detection, `-A` aggressive mode, `--banners`, `--reason`
   (why a port is in its state), `--open` (only report open ports), `--randomize` scan order
 - **Port selection**: `-F` fast scan, `--top-ports N`, `-p`/`-p-` ranges, `--exclude-ports`,
@@ -102,8 +105,11 @@ python main.py -t 127.0.0.1 --all-ports --authorized
 # UDP scan
 python main.py -t 127.0.0.1 -U 53,161 --udp --authorized
 
-# SYN stealth scan (needs scapy + raw socket privileges)
+# SYN stealth scan (delegated to nmap -sS, or scapy when nmap is absent)
 python main.py -t 127.0.0.1 --syn --authorized
+
+# Force the built-in socket scanner (no nmap)
+python main.py -t 127.0.0.1 --no-nmap -F --authorized
 
 # Fast mode: top 100 ports, aggressive timing, verbose
 python main.py -t scanme.nmap.org -F -T4 -v --authorized
@@ -148,7 +154,9 @@ python main.py -t 127.0.0.1 --output-dir my_reports
 | Option | Description |
 | --- | --- |
 | `--scan-type` | `connect` (default) · `syn` · `ack` · `null` · `fin` · `xmas` |
-| `--syn` | SYN stealth scan (needs scapy + raw socket privileges) |
+| `--syn` | SYN stealth scan (delegated to nmap `-sS` when available; scapy otherwise) |
+| `--nmap` | Prefer the nmap backend when installed (default when available) |
+| `--no-nmap` | Force the built-in socket scanner instead of nmap |
 | `--udp` | Also run UDP port scan |
 | `-sV, --version-detect` | Enable service/version detection pass |
 | `--version-intensity 0-9` | Version detection intensity (default 7) |
@@ -290,7 +298,8 @@ network_hardener/
     ├── scope_validator.py     # authorization gate & scope rules
     ├── dns_discovery.py       # DNS records, subdomains, CDN/WAF
     ├── host_discovery.py      # alive checks
-    ├── port_scanner.py        # connect/SYN/ACK/NULL/FIN/XMAS/UDP scanning
+    ├── port_scanner.py        # socket fallback: connect/SYN/ACK/NULL/FIN/XMAS/UDP
+    ├── nmap_engine.py         # optional nmap backend (-sT/-sS/-sU/-sV) + XML parse
     ├── service_enum.py        # per-protocol probes
     ├── http_audit.py          # HTTP security checks
     ├── tls_audit.py           # TLS/certificate checks

@@ -131,6 +131,12 @@ def build_parser():
                    help=f"Scan threads (default {config.DEFAULT_THREADS})")
     p.add_argument("--timeout", type=float, default=config.DEFAULT_TIMEOUT,
                    help=f"Socket timeout in seconds (default {config.DEFAULT_TIMEOUT})")
+    p.add_argument("--no-nmap", dest="use_nmap", action="store_false",
+                   help="Disable the nmap backend and force the socket scanner")
+    p.add_argument("--nmap", dest="use_nmap", action="store_true",
+                   help="Prefer the nmap backend when installed (default when "
+                        "available)")
+    p.set_defaults(use_nmap=None)
     p.add_argument("--max-rate", type=float, default=0.0, metavar="PPS",
                    help="Maximum packets/second (masscan-style --rate)")
     p.add_argument("--min-rate", type=float, default=0.0, metavar="PPS",
@@ -173,6 +179,17 @@ def build_parser():
                    help="Increase debug level (-d, -dd, -ddd)")
     p.add_argument("--version", action="store_true", help="Print version and exit")
     return p
+
+
+def resolve_scan_type(aggressive, syn, scan_type):
+    """Effective scan technique after -A / --syn resolution.
+
+    Aggressive mode or an explicit --syn flag implies a SYN scan unless the
+    user already chose a specific technique (ack/null/fin/xmas/connect).
+    """
+    if (aggressive or syn) and scan_type == "connect":
+        return "syn"
+    return scan_type
 
 
 def load_scope(path):
@@ -243,6 +260,7 @@ def main(argv=None):
     if args.aggressive:
         args.version_detect = True
         args.syn = True  # prefer SYN in aggressive mode when raw sockets exist
+    args.scan_type = resolve_scan_type(args.aggressive, args.syn, args.scan_type)
 
     probes = {
         "icmp": args.icmp_ping,
@@ -297,6 +315,7 @@ def main(argv=None):
         grepable_path=args.grepable,
         exclude_list=args.exclude,
         scan_delay=scan_delay,
+        use_nmap=(args.use_nmap is None or args.use_nmap),
     )
 
     engine = Hardener(cfg, scope=scope)
