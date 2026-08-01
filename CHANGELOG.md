@@ -21,6 +21,29 @@ All notable changes to this project are documented here. The format is based on
 - `is_valid_cidr` now requires an explicit prefix (e.g. `10.0.0.0/8`); bare IPs
   are rejected.
 
+## [1.1.0] - 2026-08
+
+### Added
+
+- Verbose and debug levels: `-v/-vv/-vvv` and `-d/-dd/-ddd` (nmap-style)
+  with thread-safe, leveled console output.
+- Append-only audit trail: `audit.log` per run, one line per action
+  (stage, action, target, result).
+- Global rate limiter: `--max-rate PPS` (masscan-style) plus `--min-rate`.
+- Timing templates `-T0..-T5` (paranoid → insane) controlling threads,
+  timeout and per-port scan delay.
+- Stateless scan types via `--scan-type`: `ack`, `null`, `fin`, `xmas`
+  (scapy + raw sockets) alongside existing connect and SYN scans.
+- Port-selection options: `-F/--fast`, `--top-ports N`, `--exclude-ports`,
+  `-p-` alias, `--open`, `--reason`.
+- Performance controls: `--max-retries`, `--host-timeout`, `--stats-every`.
+- Host-discovery probes: `-sn` ping sweep, `-PE`, `-PS`, `-PA`, `-PU`.
+- Output: nmap-style grepable export (`-oG FILE`), `--banners`.
+- Aggressive mode `-A` and service version detection `-sV` /
+  `--version-intensity 0-9`.
+- `--randomize` host/port scan order (rustscan/masscan-style).
+- `--exclude` repeatable target/IP/CIDR exclusion and YAML scope-file support.
+
 ## [1.0.0] - 2026-07
 
 ### Added

@@ -93,9 +93,27 @@ def _parse_icmp_reply(data, ident, seq):
     return icmp_type == 0 and p_ident == ident and p_seq == seq
 
 
-def tcp_ping(ip, ports=None, timeout=1.5):
-    """Return (bool, port) if any common TCP port accepts a connection."""
+def tcp_ping(ip, ports=None, timeout=1.5, ack_mode=False):
+    """Return (bool, port) if any TCP ping port accepts a connection.
+
+    - normal mode: TCP connect handshake (SYN -> SYN-ACK == alive)
+    - ack_mode (-PA): send a raw ACK; RST reply implies alive/unfiltered
+    """
     ports = ports or TCP_PING_PORTS
+    if ack_mode:
+        try:
+            from scapy.all import IP, TCP, sr1  # noqa: F401
+        except ImportError:
+            return False, None
+        for port in ports:
+            try:
+                resp = sr1(IP(dst=ip) / TCP(dport=port, flags="A"),
+                           timeout=timeout, verbose=0)
+                if resp is not None and resp.haslayer(TCP):
+                    return True, port
+            except OSError:
+                continue
+        return False, None
     for port in ports:
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -105,6 +123,23 @@ def tcp_ping(ip, ports=None, timeout=1.5):
             if result == 0:
                 return True, port
         except OSError:
+            continue
+    return False, None
+
+
+def udp_ping(ip, timeout=1.5):
+    """Send a probe to a set of common UDP services; reply implies alive."""
+    for port in (53, 123, 161, 137):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(timeout)
+        try:
+            sock.connect((ip, port))
+            sock.send(b"\x00" * 8)
+            sock.recvfrom(1024)
+            sock.close()
+            return True, port
+        except OSError:
+            sock.close()
             continue
     return False, None
 
@@ -132,31 +167,55 @@ def http_probe(ip, timeout=2.0):
     return False
 
 
-def discover_host(ip, hostname=None, timeout=2.0):
-    """Alive-check a single IP. Returns a Host object."""
+def discover_host(ip, hostname=None, timeout=2.0, probes=None):
+    """Alive-check a single IP using the configured probe set.
+
+    probes: dict of booleans -> {'icmp','tcp','ack','udp','http'}. Defaults
+    to ICMP + TCP connect + HTTP. Returns a Host object.
+    """
+    probes = probes or {}
     host = Host(ip=ip, hostname=hostname)
     info(f"Host discovery: {ip}{(' (' + hostname + ')') if hostname else ''}")
 
-    rtt = icmp_ping(ip, timeout=timeout)
-    if rtt is not None:
-        host.alive = True
-        host.alive_method = "ICMP"
-        host.rtt_ms = rtt * 1000
-        ok(f"{ip} is up via ICMP (RTT {fmt_time(rtt)})")
-        return host
+    if probes.get("icmp", True):
+        rtt = icmp_ping(ip, timeout=timeout)
+        if rtt is not None:
+            host.alive = True
+            host.alive_method = "ICMP"
+            host.rtt_ms = rtt * 1000
+            ok(f"{ip} is up via ICMP (RTT {fmt_time(rtt)})")
+            return host
 
-    tcp_alive, tcp_port = tcp_ping(ip, timeout=timeout)
-    if tcp_alive:
-        host.alive = True
-        host.alive_method = f"TCP ping (port {tcp_port})"
-        ok(f"{ip} is up via TCP connect ping on port {tcp_port}")
-        return host
+    if probes.get("tcp", True):
+        tcp_alive, tcp_port = tcp_ping(ip, timeout=timeout)
+        if tcp_alive:
+            host.alive = True
+            host.alive_method = f"TCP ping (port {tcp_port})"
+            ok(f"{ip} is up via TCP connect ping on port {tcp_port}")
+            return host
 
-    if http_probe(ip, timeout=timeout):
-        host.alive = True
-        host.alive_method = "HTTP probe"
-        ok(f"{ip} is up via HTTP probe")
-        return host
+    if probes.get("ack"):
+        ack_alive, ack_port = tcp_ping(ip, timeout=timeout, ack_mode=True)
+        if ack_alive:
+            host.alive = True
+            host.alive_method = f"ACK ping (port {ack_port})"
+            ok(f"{ip} is up via ACK ping on port {ack_port}")
+            return host
+
+    if probes.get("udp"):
+        udp_alive, udp_port = udp_ping(ip, timeout=timeout)
+        if udp_alive:
+            host.alive = True
+            host.alive_method = f"UDP ping (port {udp_port})"
+            ok(f"{ip} is up via UDP ping on port {udp_port}")
+            return host
+
+    if probes.get("http", True):
+        if http_probe(ip, timeout=timeout):
+            host.alive = True
+            host.alive_method = "HTTP probe"
+            ok(f"{ip} is up via HTTP probe")
+            return host
 
     host.alive = False
     host.alive_method = "No response"
@@ -164,12 +223,13 @@ def discover_host(ip, hostname=None, timeout=2.0):
     return host
 
 
-def discover_hosts(ips, hostnames=None, timeout=2.0, threads=30):
+def discover_hosts(ips, hostnames=None, timeout=2.0, threads=30, probes=None):
     """Parallel alive-check for a list of IPs."""
     hostnames = hostnames or {}
     hosts = []
     with ThreadPoolExecutor(max_workers=threads) as pool:
-        futures = {pool.submit(discover_host, ip, hostnames.get(ip), timeout): ip for ip in ips}
+        futures = {pool.submit(discover_host, ip, hostnames.get(ip), timeout,
+                               probes): ip for ip in ips}
         for fut in as_completed(futures):
             try:
                 hosts.append(fut.result())

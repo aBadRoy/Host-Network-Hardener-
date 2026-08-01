@@ -1,16 +1,23 @@
-"""Port Scanner: TCP connect, TCP SYN (scapy) and UDP scans with threading.
+"""Port Scanner: TCP connect/SYN/ACK/NULL/FIN/XMAS and UDP scans with threading.
 
-A high-trust CONNECT scan plus optional SYN stealth and UDP probes determine
-open/closed/filtered states for the configured port set.
+- TCP connect  (no privileges)
+- TCP SYN      (scapy + raw sockets)
+- TCP ACK      (scapy; firewall rule detection)
+- TCP NULL/FIN/XMAS (scapy; stateful-filter detection)
+- UDP probes   (connected socket, no raw sockets required)
+
+Supports rate limiting, per-port retries, randomized order and periodic
+progress statistics.
 """
 
+import random
 import socket
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .config import PORT_SERVICES
 from .models import PortResult
-from .utils import low_pri, ok, warn
+from .utils import dbg, low_pri, ok, v_ok, warn
 
 try:
     from scapy.all import IP, TCP, sr1, send  # noqa: F401
@@ -82,6 +89,53 @@ def tcp_syn_scan(ip, port, timeout=2.0):
 
 
 # ===========================================================================
+# Stateless TCP scans (ACK / NULL / FIN / XMAS) - scapy only
+# ===========================================================================
+
+def _stateless_tcp_scan(ip, port, flags, method, timeout=2.0):
+    """Send a single TCP packet with `flags`; interpret the response.
+
+    - RST received  -> unfiltered (ACK) / closed (NULL, FIN, XMAS)
+    - no response   -> filtered
+    - ICMP error    -> filtered
+    """
+    if not _SCAPY_OK:
+        return "filtered", {"method": method, "note": "scapy not installed"}
+    try:
+        packet = IP(dst=ip) / TCP(dport=port, flags=flags)
+        resp = sr1(packet, timeout=timeout, verbose=0)
+        if resp is None:
+            return "filtered", {"method": method, "note": "no response"}
+        if resp.haslayer(TCP):
+            if resp[TCP].flags & 0x04:  # RST
+                return "open", {"method": method, "note": "unfiltered (RST)"}
+            return "filtered", {"method": method, "note": "non-RST reply"}
+        return "filtered", {"method": method, "note": "no TCP layer"}
+    except OSError as exc:
+        return "filtered", {"method": method, "note": f"raw socket unavailable: {exc}"}
+
+
+def tcp_ack_scan(ip, port, timeout=2.0):
+    """ACK scan: RST => unfiltered, silence => filtered (firewall rule)."""
+    return _stateless_tcp_scan(ip, port, "A", "ack", timeout)
+
+
+def tcp_null_scan(ip, port, timeout=2.0):
+    """NULL scan: RST => closed, silence => open|filtered."""
+    return _stateless_tcp_scan(ip, port, "", "null", timeout)
+
+
+def tcp_fin_scan(ip, port, timeout=2.0):
+    """FIN scan: RST => closed, silence => open|filtered."""
+    return _stateless_tcp_scan(ip, port, "F", "fin", timeout)
+
+
+def tcp_xmas_scan(ip, port, timeout=2.0):
+    """XMAS scan (FIN+PSH+URG): RST => closed, silence => open|filtered."""
+    return _stateless_tcp_scan(ip, port, "FPU", "xmas", timeout)
+
+
+# ===========================================================================
 # UDP scan (connected-socket technique, works without raw sockets)
 # ===========================================================================
 
@@ -144,38 +198,89 @@ def udp_scan(ip, port, timeout=2.0):
 # Orchestrated scanning
 # ===========================================================================
 
-def _scan_one_tcp(ip, port, timeout, use_syn):
-    if use_syn and scapy_available():
-        state, evidence = tcp_syn_scan(ip, port, timeout)
+_STATELESS_SCANS = {
+    "ack": tcp_ack_scan,
+    "null": tcp_null_scan,
+    "fin": tcp_fin_scan,
+    "xmas": tcp_xmas_scan,
+}
+
+
+def _probe_tcp(ip, port, timeout, scan_type, retries):
+    """Probe one TCP port with optional retries; return (state, evidence)."""
+    if scan_type in _STATELESS_SCANS:
+        fn = _STATELESS_SCANS[scan_type]
+    elif scan_type == "syn":
+        fn = tcp_syn_scan if scapy_available() else tcp_connect_scan
     else:
-        state, evidence = tcp_connect_scan(ip, port, timeout)
+        fn = tcp_connect_scan
+    state, evidence = fn(ip, port, timeout)
+    attempt = 1
+    while state == "filtered" and attempt < retries + 1:
+        # Re-probe uncertain (filtered/timeout) ports to reduce false negatives.
+        new_state, new_evidence = fn(ip, port, timeout)
+        attempt += 1
+        if new_state == "open":
+            return new_state, new_evidence
+        state = new_state
+    return state, evidence
+
+
+def _scan_one_tcp(ip, port, timeout, scan_type, retries, limiter, scan_delay):
+    if limiter is not None:
+        limiter.acquire()
+    if scan_delay:
+        time.sleep(scan_delay)
+    state, evidence = _probe_tcp(ip, port, timeout, scan_type, retries)
     result = PortResult(port=port, protocol="tcp", state=state,
                         service=PORT_SERVICES.get((port, "tcp"), "unknown"),
                         scan_evidence=evidence)
     if state == "open" and evidence.get("banner"):
         result.banners.append(evidence["banner"])
+    dbg(2, f"tcp {ip}:{port} -> {state} {evidence}")
     return result
 
 
-def _scan_one_udp(ip, port, timeout):
+def _scan_one_udp(ip, port, timeout, retries, limiter):
+    if limiter is not None:
+        limiter.acquire()
     state, evidence = udp_scan(ip, port, timeout)
-    return PortResult(port=port, protocol="udp", state=state,
-                      service=PORT_SERVICES.get((port, "udp"), "unknown"),
-                      scan_evidence=evidence)
+    result = PortResult(port=port, protocol="udp", state=state,
+                        service=PORT_SERVICES.get((port, "udp"), "unknown"),
+                        scan_evidence=evidence)
+    dbg(2, f"udp {ip}:{port} -> {state} {evidence}")
+    return result
 
 
 def scan_tcp_ports(ip, ports, timeout=2.0, threads=50, use_syn=False,
-                   progress_label=""):
+                   progress_label="", scan_type="connect", retries=0,
+                   limiter=None, scan_delay=0.0, randomize=False,
+                   stats_every=0, show_open_only=False, show_reason=False):
     """Scan a list of TCP ports; returns list of PortResult."""
     results = []
     label = progress_label or ip
+    work = list(ports)
+    if randomize:
+        random.shuffle(work)
+    total = len(work)
+    started = time.time()
+    last_stats = time.time()
+    done = 0
     with ThreadPoolExecutor(max_workers=threads) as pool:
-        futures = {pool.submit(_scan_one_tcp, ip, p, timeout, use_syn): p for p in ports}
+        futures = {pool.submit(_scan_one_tcp, ip, p, timeout, scan_type,
+                               retries, limiter, scan_delay): p for p in work}
         for fut in as_completed(futures):
             try:
                 results.append(fut.result())
             except Exception:
                 continue
+            done += 1
+            if stats_every and time.time() - last_stats >= stats_every:
+                elapsed_ = time.time() - started
+                rate = done / elapsed_ if elapsed_ else 0
+                v_ok(1, f"  [{label}] progress: {done}/{total} ports, "
+                        f"{rate:.1f} pps, {elapsed_:.1f}s")
+                last_stats = time.time()
     open_ports = sorted(r.port for r in results if r.state == "open")
     if open_ports:
         ok(f"{label}: {len(open_ports)} open TCP port(s): {open_ports}")
@@ -183,16 +288,30 @@ def scan_tcp_ports(ip, ports, timeout=2.0, threads=50, use_syn=False,
         warn(f"{label}: no open TCP ports in scanned set.")
     for r in sorted(results, key=lambda x: x.port):
         if r.state == "open":
-            low_pri(f"  {r.port:6d}/tcp  {r.service}")
+            line = f"  {r.port:6d}/tcp  {r.service}"
+            if show_reason:
+                note = r.scan_evidence.get("note") or r.scan_evidence.get("method")
+                line += f"   reason: {note or 'connect succeeded'}"
+            low_pri(line)
+    if not show_open_only:
+        filtered = sum(1 for r in results if r.state == "filtered")
+        if filtered:
+            v_ok(1, f"  [{label}] {filtered} filtered/closed port(s) not reported.")
     return results
 
 
-def scan_udp_ports(ip, ports, timeout=2.0, threads=20, progress_label=""):
+def scan_udp_ports(ip, ports, timeout=2.0, threads=20, progress_label="",
+                   retries=0, limiter=None, randomize=False,
+                   show_reason=False):
     """Scan a list of UDP ports; returns list of PortResult."""
     results = []
     label = progress_label or ip
+    work = list(ports)
+    if randomize:
+        random.shuffle(work)
     with ThreadPoolExecutor(max_workers=threads) as pool:
-        futures = {pool.submit(_scan_one_udp, ip, p, timeout): p for p in ports}
+        futures = {pool.submit(_scan_one_udp, ip, p, timeout, retries,
+                               limiter): p for p in work}
         for fut in as_completed(futures):
             try:
                 results.append(fut.result())
@@ -203,5 +322,9 @@ def scan_udp_ports(ip, ports, timeout=2.0, threads=20, progress_label=""):
         ok(f"{label}: {len(open_ports)} open UDP port(s): {open_ports}")
     for r in sorted(results, key=lambda x: x.port):
         if r.state == "open":
-            low_pri(f"  {r.port:6d}/udp  {r.service}")
+            line = f"  {r.port:6d}/udp  {r.service}"
+            if show_reason:
+                note = r.scan_evidence.get("note") or r.scan_evidence.get("method")
+                line += f"   reason: {note or 'got response'}"
+            low_pri(line)
     return results

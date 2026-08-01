@@ -55,3 +55,62 @@ def test_parser_all_ports_flag():
 def test_parser_range_ports():
     args = build_parser().parse_args(["-t", "127.0.0.1", "-p", "1-100,8080"])
     assert args.ports == list(range(1, 101)) + [8080]
+
+
+def test_parser_verbose_count():
+    args = build_parser().parse_args(["-vvv", "-d"])
+    assert args.verbose == 3
+    assert args.debug == 1
+
+
+def test_parser_timing_template():
+    args = build_parser().parse_args(["-T4", "-t", "127.0.0.1"])
+    assert args.timing == 4
+    args = build_parser().parse_args(["-T0", "-t", "127.0.0.1"])
+    assert args.timing == 0
+
+
+def test_parser_fast_and_top_ports():
+    args = build_parser().parse_args(["-F", "-t", "127.0.0.1"])
+    assert args.fast is True
+    args = build_parser().parse_args(["--top-ports", "50", "-t", "127.0.0.1"])
+    assert args.top_ports == 50
+
+
+def test_parser_scan_type():
+    args = build_parser().parse_args(["--scan-type", "ack", "-t", "127.0.0.1"])
+    assert args.scan_type == "ack"
+
+
+def test_parser_rate_and_retries():
+    args = build_parser().parse_args(["--max-rate", "500", "--max-retries", "3",
+                                      "--stats-every", "5", "-t", "127.0.0.1"])
+    assert args.max_rate == 500.0
+    assert args.max_retries == 3
+    assert args.stats_every == 5
+
+
+def test_parser_grepable_and_reason():
+    args = build_parser().parse_args(["-oG", "out.gnmap", "--reason", "--open",
+                                      "-t", "127.0.0.1"])
+    assert args.grepable == "out.gnmap"
+    assert args.reason is True
+    assert args.open is True
+
+
+def test_parser_ping_sweep_and_probes():
+    args = build_parser().parse_args(["-sn", "-PA", "-PU", "-t", "127.0.0.1"])
+    assert args.ping_sweep is True
+    assert args.ack_ping is True
+    assert args.udp_ping is True
+
+
+def test_parser_aggressive():
+    args = build_parser().parse_args(["-A", "-t", "127.0.0.1"])
+    assert args.aggressive is True
+
+
+def test_parser_exclude_ports():
+    args = build_parser().parse_args(["--exclude-ports", "22,80-82",
+                                      "-t", "127.0.0.1"])
+    assert args.exclude_ports == [22, 80, 81, 82]

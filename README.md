@@ -95,6 +95,21 @@ python main.py -t 127.0.0.1 -U 53,161 --udp --authorized
 # SYN stealth scan (needs scapy + raw socket privileges)
 python main.py -t 127.0.0.1 --syn --authorized
 
+# Fast mode: top 100 ports, aggressive timing, verbose
+python main.py -t scanme.nmap.org -F -T4 -v --authorized
+
+# Full aggressive: version + OS + enumeration
+python main.py -t 10.0.0.5 -A --reason --authorized
+
+# Ping sweep only (discovery, no port scan)
+python main.py -t 10.0.0.0/24 -sn -PA --authorized
+
+# Rate-limited, random order, grepable output
+python main.py -t 10.0.0.5 -F --max-rate 500 --randomize -oG scan.gnmap --authorized
+
+# Debug-level tracing of every probe
+python main.py -t 127.0.0.1 -F -d -d --authorized
+
 # Enforce a scope configuration file
 python main.py -t 127.0.0.1 --scope-file scope.json
 
@@ -104,28 +119,91 @@ python main.py -t 127.0.0.1 --output-dir my_reports
 
 ### Options
 
+#### Target & port selection
+
 | Option | Description |
 | --- | --- |
 | `-t, --targets` | Target(s): IP, CIDR, hostname or URL (space/comma separated) |
-| `-f, --target-file` | File with one target per line |
-| `-p, --ports` | TCP ports to scan: comma list and/or ranges, e.g. `22,80-90,443` |
+| `-f, --target-file` / `-iL` | File with one target per line |
+| `-p, --ports` | TCP ports: comma list and/or ranges, e.g. `22,80-90,443` |
+| `-p-` / `--all-ports` | Scan every TCP port 0–65535 (requires `--authorized`) |
 | `-U, --udp-ports` | UDP ports to scan, e.g. `53,161` |
-| `--all-ports` | Scan every TCP port 0–65535 (requires `--authorized`) |
-| `--syn` | Use SYN stealth scan where scapy/raw sockets are available |
+| `-F, --fast` | Fast mode: scan only the 100 most common TCP ports |
+| `--top-ports N` | Scan the N most common TCP ports (masscan-style) |
+| `--exclude-ports` | Skip these ports (comma list and/or ranges) |
+| `--exclude` | Exclude a target/IP/CIDR from scanning (repeatable) |
+
+#### Scan techniques
+
+| Option | Description |
+| --- | --- |
+| `--scan-type` | `connect` (default) · `syn` · `ack` · `null` · `fin` · `xmas` |
+| `--syn` | SYN stealth scan (needs scapy + raw socket privileges) |
 | `--udp` | Also run UDP port scan |
+| `-sV, --version-detect` | Enable service/version detection pass |
+| `--version-intensity 0-9` | Version detection intensity (default 7) |
+| `-A, --aggressive` | Aggressive mode: version + OS + full enumeration + SYN |
+
+#### Host discovery
+
+| Option | Description |
+| --- | --- |
+| `-sn, --ping-sweep` | Discover live hosts only; no port scan |
+| `-PE, --icmp-ping` | ICMP echo discovery probe |
+| `-PS, --tcp-ping` | TCP SYN ping discovery probe |
+| `-PA, --ack-ping` | TCP ACK ping discovery probe |
+| `-PU, --udp-ping` | UDP ping discovery probe |
+| `--randomize` | Randomize host and port scan order |
+
+#### Timing / performance
+
+| Option | Description |
+| --- | --- |
+| `-T 0-5, --timing` | Timing template: `-T0` paranoid … `-T5` insane (nmap-style) |
 | `--threads` | Scan threads (default 50) |
 | `--timeout` | Socket timeout in seconds (default 2.0) |
+| `--max-rate PPS` | Hard packets/second cap (masscan-style `--rate`) |
+| `--min-rate PPS` | Informational lower rate bound |
+| `--max-retries` | Re-probe attempts for uncertain ports (default 1) |
+| `--host-timeout SEC` | Give up on a host after this many seconds |
+| `--stats-every SEC` | Print periodic scan progress every N seconds |
+
+#### Authorization / scope
+
+| Option | Description |
+| --- | --- |
 | `--authorized` | Pre-confirm explicit authorization to scan |
-| `--scope-file` | JSON scope config: `{allowed, excluded, rate_limit, window}` |
+| `--scope-file` | JSON or YAML scope config: `{allowed, excluded, rate_limit, window}` |
+
+#### Output
+
+| Option | Description |
+| --- | --- |
 | `--output-dir` | Report directory (default `reports`) |
+| `-oG FILE` | Write nmap-style grepable output to FILE |
+| `--open` | Only report open ports |
+| `--reason` | Show the reason each port was classified open/closed |
+| `--banners` | Grab service banners on open ports (masscan-style) |
 | `--no-enum` | Skip service enumeration |
 | `--no-os` | Skip OS fingerprinting |
 | `--no-cve` | Skip CVE correlation |
 | `--dns-server` | Custom DNS resolver (repeatable) |
 | `--no-color` | Disable ANSI color output |
 
+#### Verbosity / debug
+
+| Option | Description |
+| --- | --- |
+| `-v, -vv, -vvv` | Increase verbosity (per-phase detail) |
+| `-d, -dd, -ddd` | Increase debug level (per-probe tracing) |
+
 > Without `--authorized` (or a `--scope-file`), the tool prompts for confirmation
 > before scanning. That gate is on purpose.
+
+### Reports
+
+Every run writes an **audit trail** (`audit.log`) alongside the standard
+TXT/JSON/XML/CSV/HTML reports. See the reports section below for details.
 
 ---
 
@@ -174,6 +252,10 @@ Reports are written to the output directory (default `reports/`):
 | `report.xml` | XML export |
 | `report.csv` | Findings spreadsheet |
 | `report.html` | Styled executive/technical report |
+| `audit.log` | Append-only audit trail of every action per run |
+
+With `-oG <file>`, nmap-style grepable output is written in addition
+(e.g. `Host: 45.33.32.156 (scanme.nmap.org)\tPorts: 22/open/tcp//ssh//`).
 
 ---
 

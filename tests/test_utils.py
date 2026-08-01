@@ -3,7 +3,8 @@
 import sys
 
 from hardener.utils import (fmt_time, is_valid_cidr, is_valid_hostname,
-                            is_valid_ip, normalize_url_target, sanitize_text)
+                            is_valid_ip, normalize_url_target, sanitize_text,
+                            set_debug, set_verbosity)
 
 
 def test_sanitize_text_strips_control_chars():
@@ -63,3 +64,22 @@ def test_normalize_url_target():
 def test_fmt_time():
     assert fmt_time(0.5) == "500 ms"
     assert fmt_time(2.0) == "2.00 s"
+
+
+def test_verbosity_and_debug_setters():
+    set_verbosity(3)
+    set_debug(2)
+    from hardener.utils import VERBOSE, DEBUG
+    assert VERBOSE == 3
+    assert DEBUG == 2
+    # Reset to defaults so other tests see the baseline.
+    set_verbosity(0)
+    set_debug(0)
+
+
+def test_verbosity_never_negative():
+    set_verbosity(-1)
+    set_debug(-5)
+    from hardener.utils import VERBOSE, DEBUG
+    assert VERBOSE == 0
+    assert DEBUG == 0

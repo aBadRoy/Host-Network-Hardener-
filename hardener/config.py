@@ -2,7 +2,7 @@
 
 TOOL_NAME = "Host & Network Hardener"
 TOOL_TAGLINE = "Discovery | Enumeration | Analysis | Risk Scoring | Remediation"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -12,6 +12,34 @@ DEFAULT_THREADS = 50
 DEFAULT_SCAN_WINDOW = "00:00-23:59"
 DEFAULT_RATE_LIMIT = 1000          # packets / second ceiling (informational)
 DEFAULT_DNS_SERVERS = ["8.8.8.8", "1.1.1.1", "208.67.222.222"]
+DEFAULT_RETRIES = 1                # extra probes per port
+DEFAULT_MAX_RATE = 0               # 0 == no explicit cap (threads govern pace)
+
+# nmap-style timing templates: T0 paranoid ... T5 insane.
+# dict: template -> (max_threads, socket_timeout, scan_delay_seconds)
+TIMING_TEMPLATES = {
+    0: (1, 5.0, 5.0),      # paranoid
+    1: (2, 3.0, 1.5),      # sneaky
+    2: (10, 2.0, 0.1),     # polite
+    3: (50, 2.0, 0.0),     # normal (default)
+    4: (100, 1.5, 0.0),    # aggressive
+    5: (256, 1.0, 0.0),    # insane
+}
+
+# Most common TCP ports ranked by frequency (used by -F / --top-ports)
+TOP_PORTS_RANKED = [
+    80, 443, 22, 21, 25, 53, 110, 143, 993, 995, 23, 3389, 5900, 8080,
+    8443, 8000, 8888, 3306, 5432, 1433, 1521, 6379, 11211, 27017, 9200,
+    5601, 161, 445, 139, 135, 445, 53, 464, 636, 88, 389, 636, 3268,
+    3269, 137, 139, 445, 593, 1025, 1026, 1080, 123, 587, 465, 2525,
+    990, 989, 5060, 5061, 1723, 500, 4500, 1701, 1194, 2222, 3000, 4000,
+    5000, 7001, 7002, 10000, 10001, 2000, 2001, 49152, 49153, 49154,
+    49155, 49156, 49157, 515, 631, 9100, 3283, 3389, 5984, 5985, 5986,
+    47001, 445, 5353, 1900, 5355, 5357, 3702, 593, 5722, 49152, 49154,
+    49155, 49156, 49157, 50000, 50030, 50070, 8020, 8030, 8032, 8042,
+    8085, 8086, 8090, 8181, 8880, 8888, 9080, 9090, 9999, 10000,
+]
+FAST_PORTS = sorted(set(TOP_PORTS_RANKED))
 
 BANNER = r"""
   _  _     _    ____          ____                            _           

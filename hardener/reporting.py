@@ -275,6 +275,41 @@ def _render_html(report):
 
 
 # ---------------------------------------------------------------------------
+# Grepable output (nmap -oG style)
+# ---------------------------------------------------------------------------
+
+def render_grepable(report):
+    """Render nmap-grepable output (one line per host, 'Ports:' field)."""
+    lines = []
+    lines.append(f"# {report.tool_name} ({report.tool_version}) scan initiated "
+                 f"{report.started_at}")
+    for host in report.hosts:
+        label = f"{host.ip}{(' (' + host.hostname + ')') if host.hostname else ''}"
+        if not host.alive:
+            lines.append(f"Host: {label}\tStatus: Down")
+            continue
+        lines.append(f"Host: {label}\tStatus: Up")
+        ports = [p for p in host.ports if p.state == "open"]
+        if ports:
+            entries = []
+            for p in sorted(ports, key=lambda x: x.port):
+                entries.append(
+                    f"{p.port}/open/{p.protocol}//{p.service}/"
+                    f"/{'' if p.version is None else p.version}")
+            lines.append(f"Host: {label}\tPorts: {', '.join(entries)}")
+    lines.append(f"# {report.tool_name} done at {report.finished_at or '--'} -- "
+                 f"{len(report.hosts)} IP address(es) scanned in "
+                 f"{report.duration}")
+    return "\n".join(lines) + "\n"
+
+
+def write_grepable(report, path):
+    from .utils import ensure_dir
+    ensure_dir(os.path.dirname(path) or ".")
+    return _write(path, render_grepable(report))
+
+
+# ---------------------------------------------------------------------------
 # Entry points
 # ---------------------------------------------------------------------------
 

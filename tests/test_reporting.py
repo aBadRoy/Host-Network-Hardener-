@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 
 from hardener.models import (Finding, Host, PortResult, ScanReport)
 from hardener.risk_engine import score_all, summary_stats
-from hardener.reporting import generate_reports
+from hardener.reporting import generate_reports, render_grepable
 
 
 def _sample_report():
@@ -68,3 +68,11 @@ def test_txt_report_mentions_finding(tmp_path):
     paths = generate_reports(_sample_report(), output_dir=str(tmp_path))
     text = (tmp_path / paths["txt"]).read_text(encoding="utf-8")
     assert "Weak SSH version" in text
+
+
+def test_grepable_output():
+    text = render_grepable(_sample_report())
+    assert text.startswith("#")
+    assert "Status: Up" in text
+    assert "22/open/tcp//SSH//" in text
+    assert "10.0.0.5" in text

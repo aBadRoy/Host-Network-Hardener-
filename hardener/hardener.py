@@ -5,11 +5,15 @@
 3. DNS discovery         8. OS fingerprinting
 4. Host discovery        9. Security analysis + CVE correlation
 5. Port scanning        10. Risk scoring + reporting + remediation
+
+Every stage writes to the shared audit log so a run is fully traceable.
 """
 
 import time
+from typing import Optional
 
 from . import config
+from .audit import AuditLog
 from .dns_discovery import discover_host_infrastructure
 from .host_discovery import discover_hosts
 from .http_audit import audit_http
@@ -17,15 +21,16 @@ from .input_handler import expand_targets
 from .models import Host, ScanConfig, ScanReport
 from .os_fingerprint import fingerprint_os
 from .port_scanner import scan_tcp_ports, scan_udp_ports
+from .ratelimit import RateLimiter
 from .remediation import attach_remediation_all
-from .reporting import generate_reports
+from .reporting import generate_reports, write_grepable
 from .risk_engine import deduplicate, prioritize, score_all, summary_stats
 from .scope_validator import ScopeValidator
 from .security_analysis import analyze_host
 from .service_enum import enumerate_port
 from .tls_audit import audit_tls
 from .utils import (Color, elapsed, fmt_time, info, low_pri, ok, out, paint,
-                    timestamp, vuln, warn)
+                    timestamp, v_info, vuln, warn)
 
 TLS_PORTS = {443, 8443, 9443, 5986, 636, 993, 995, 465}
 HTTP_PORTS = {80, 443, 8080, 8443, 9443}
@@ -44,10 +49,12 @@ class Hardener:
             scope=self.scope,
             authorized=self.cfg.authorized,
             scan_window=self.scope.get("window"),
-            rate_limit=self.scope.get("rate_limit"),
+            rate_limit=self.scope.get("rate_limit") or self.cfg.max_rate,
         )
         if not self.cfg.dns_servers:
             self.cfg.dns_servers = config.DEFAULT_DNS_SERVERS
+        self.limiter = RateLimiter(self.cfg.max_rate)
+        self.audit: Optional[AuditLog] = None
 
     # ------------------------------------------------------------------
     def run(self, targets=None):
@@ -57,6 +64,10 @@ class Hardener:
         out(paint(config.TOOL_NAME, Color.CYAN, bold=True) +
             f"  --  {config.TOOL_TAGLINE}")
         info(f"Workflow started at {self.report.started_at}")
+        v_info(2, f"verbosity={self.cfg.verbose} debug={self.cfg.debug} "
+                  f"timing=-T{self.cfg.timing} scan_type={self.cfg.scan_type}")
+
+        self._setup_audit()
 
         # 1. Input intake
         self.cfg.targets = targets or self.cfg.targets
@@ -64,6 +75,7 @@ class Hardener:
             raise ValueError("No targets supplied to the engine.")
         info(f"Parsed {len(self.cfg.targets)} target(s) from input.")
         self.report.targets = self.cfg.targets
+        self._log("STAGE1", "input_parsed", result=f"{len(self.cfg.targets)} targets")
 
         # 2. Scope validation + authorization
         info("Step 1/10 - Scope validation & authorisation")
@@ -72,10 +84,17 @@ class Hardener:
         approved = []
         for t in expand_targets(self.cfg.targets):
             ok_flag, reason = self.validator.validate(t)
+            self._log("STAGE2", "scope_check", target=t.raw,
+                           result="ALLOWED" if ok_flag else "DENIED",
+                           reason=reason)
             if not ok_flag:
                 warn(f"Out of scope: {t.raw} ({reason})")
                 continue
             approved.append(t)
+        if self.cfg.exclude_list:
+            approved = [t for t in approved
+                        if t.raw not in self.cfg.exclude_list
+                        and t.ip not in self.cfg.exclude_list]
         if not approved:
             warn("No in-scope targets remain; aborting.")
             return self._finish(start, aborted=True)
@@ -102,11 +121,23 @@ class Hardener:
                 t.ip_list = [t.ip]
             for ip in t.ip_list or ([t.ip] if t.ip else []):
                 ip_hosts.setdefault(ip, t)
+        probes = {
+            "icmp": self.cfg.icmp_ping,
+            "tcp": self.cfg.tcp_ping,
+            "ack": self.cfg.ack_ping,
+            "udp": self.cfg.udp_ping,
+            "http": True,
+        }
+        v_info(2, f"discovery probes: {[k for k, v in probes.items() if v]}")
         alive_hosts = discover_hosts(
             list(ip_hosts.keys()),
             hostnames={ip: t.hostname for ip, t in ip_hosts.items()},
             timeout=self.cfg.timeout,
+            probes=probes,
         )
+        for h in alive_hosts:
+            self._log("STAGE4", "host_discovery", target=h.ip,
+                           result="ALIVE", method=h.alive_method)
         info(f"{len(alive_hosts)} live host(s) identified; "
              f"{len(ip_hosts) - len(alive_hosts)} unreachable.")
         for h in alive_hosts:
@@ -122,18 +153,33 @@ class Hardener:
             warn("No live hosts; nothing further to assess.")
             return self._finish(start)
 
+        if self.cfg.ping_sweep:
+            info("Ping-sweep mode (-sn): skipping port scanning.")
+            return self._finish(start)
+
         # 5. Port scanning
         info("Step 4/10 - Port scanning")
         ports = self.cfg.ports or config.DEFAULT_PORTS
         for h in alive_hosts:
-            h.ports = scan_tcp_ports(h.ip, ports, timeout=self.cfg.timeout,
-                                     threads=self.cfg.threads,
-                                     use_syn=self.cfg.syn_scan,
-                                     progress_label=h.ip)
+            h.ports = scan_tcp_ports(
+                h.ip, ports, timeout=self.cfg.timeout, threads=self.cfg.threads,
+                use_syn=self.cfg.syn_scan, progress_label=h.ip,
+                scan_type=self.cfg.scan_type, retries=self.cfg.max_retries,
+                limiter=self.limiter, scan_delay=self.cfg.scan_delay,
+                randomize=self.cfg.randomize, stats_every=self.cfg.stats_every,
+                show_open_only=self.cfg.show_open_only,
+                show_reason=self.cfg.show_reason,
+            )
+            open_tcp = [r.port for r in h.ports if r.state == "open"]
+            self._log("STAGE5", "port_scan", target=h.ip,
+                           result=f"{len(open_tcp)} open ports", ports=",".join(map(str, open_tcp)))
             if self.cfg.udp_scan:
-                h.ports += scan_udp_ports(h.ip, self.cfg.udp_ports or config.DEFAULT_UDP_PORTS,
-                                          timeout=self.cfg.timeout,
-                                          progress_label=h.ip)
+                h.ports += scan_udp_ports(
+                    h.ip, self.cfg.udp_ports or config.DEFAULT_UDP_PORTS,
+                    timeout=self.cfg.timeout, progress_label=h.ip,
+                    retries=self.cfg.max_retries, limiter=self.limiter,
+                    randomize=self.cfg.randomize, show_reason=self.cfg.show_reason,
+                )
 
         # 6. Service enumeration
         info("Step 5/10 - Service enumeration")
@@ -164,6 +210,8 @@ class Hardener:
                    if r.get("_ip") == h.ip}
             h.findings = analyze_host(h, tls_results=tls,
                                       enable_cve=self.cfg.cve_check)
+            self._log("STAGE9", "analysis", target=h.ip,
+                           result=f"{len(h.findings)} findings")
 
         # 10. Risk scoring, remediation, reporting
         info("Step 9/10 - Risk scoring & prioritisation")
@@ -178,6 +226,18 @@ class Hardener:
         info("Step 10/10 - Report generation & remediation guidance")
         self._print_summary()
         return self._finish(start)
+
+    # ------------------------------------------------------------------
+    def _log(self, stage, action, target="", result="", **extra):
+        if self.audit is not None:
+            self.audit.log(stage, action, target=target, result=result, **extra)
+
+    # ------------------------------------------------------------------
+    def _setup_audit(self):
+        out_dir = self.cfg.output_dir
+        from .utils import ensure_dir
+        ensure_dir(out_dir)
+        self.audit = AuditLog(self.cfg.output_dir + "/audit.log")
 
     # ------------------------------------------------------------------
     def _audit_http_tls(self, host):
@@ -239,9 +299,15 @@ class Hardener:
         self.report.duration = fmt_time(elapsed(start))
         if not aborted:
             paths = generate_reports(self.report, output_dir=self.cfg.output_dir)
+            if self.cfg.grepable_path:
+                write_grepable(self.report, self.cfg.grepable_path)
             ok("Reports generated:")
             for fmt_, path in paths.items():
                 low_pri(f"  {fmt_.upper():4s}: {path}")
+            if self.audit:
+                self._log("STAGE10", "reports", result="generated",
+                               dir=self.cfg.output_dir)
+                self.audit.close()
         else:
             warn("Scan aborted; no reports generated.")
         info(f"Workflow finished at {self.report.finished_at} "

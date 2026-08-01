@@ -96,6 +96,7 @@ class ScanConfig:
     udp_ports: List[int] = field(default_factory=list)
     all_ports: bool = False
     syn_scan: bool = False
+    scan_type: str = "connect"       # connect|syn|ack|null|fin|xmas
     udp_scan: bool = False
     threads: int = 50
     timeout: float = 2.0
@@ -106,6 +107,32 @@ class ScanConfig:
     os_detection: bool = True
     cve_check: bool = True
     dns_servers: List[str] = field(default_factory=list)
+    verbose: int = 0
+    debug: int = 0
+    timing: int = 3                     # -T0..-T5 template
+    fast: bool = False                  # -F fast mode
+    top_ports: int = 0                  # --top-ports N
+    exclude_ports: List[int] = field(default_factory=list)
+    show_open_only: bool = False        # --open
+    show_reason: bool = False           # --reason
+    max_rate: float = 0.0               # --max-rate pkts/sec
+    min_rate: float = 0.0               # --min-rate pkts/sec
+    max_retries: int = 0                # --max-retries
+    host_timeout: float = 0.0           # --host-timeout seconds
+    stats_every: int = 0                # --stats-every N (seconds)
+    banners: bool = False               # --banners
+    ping_sweep: bool = False            # -sn: discover only
+    icmp_ping: bool = True              # -PE
+    tcp_ping: bool = True               # -PS
+    ack_ping: bool = False              # -PA
+    udp_ping: bool = False              # -PU
+    randomize: bool = False             # --randomize scan order
+    aggressive: bool = False            # -A
+    version_intensity: int = 7          # -sV / --version-intensity 0-9
+    run_id: str = ""
+    grepable_path: str = ""             # -oG output file
+    exclude_list: List[str] = field(default_factory=list)
+    scan_delay: float = 0.0             # per-port delay from -T template
 
 
 @dataclass

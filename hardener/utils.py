@@ -11,6 +11,22 @@ from datetime import datetime
 _PRINT_LOCK = threading.Lock()
 _COLOR = sys.stdout.isatty()
 
+# ---------------------------------------------------------------------------
+# Verbosity / debug levels (nmap-style -v/-vv/-vvv and -d/-dd/-ddd)
+# ---------------------------------------------------------------------------
+VERBOSE = 0
+DEBUG = 0
+
+
+def set_verbosity(level):
+    global VERBOSE
+    VERBOSE = max(0, int(level))
+
+
+def set_debug(level):
+    global DEBUG
+    DEBUG = max(0, int(level))
+
 
 class Color:
     RESET = "\033[0m"
@@ -80,6 +96,33 @@ def vuln(msg):
 
 def low_pri(msg):
     out(f"     {msg}", Color.DIM)
+
+
+def v_out(level, msg):
+    """Verbose message shown only when VERBOSE >= level (-v, -vv, -vvv)."""
+    if VERBOSE >= level:
+        out(f"      {msg}", Color.CYAN)
+
+
+def v_info(level, msg):
+    if VERBOSE >= level:
+        out(f"[*] {msg}", Color.BLUE)
+
+
+def v_ok(level, msg):
+    if VERBOSE >= level:
+        out(f"[+] {msg}", Color.GREEN)
+
+
+def v_warn(level, msg):
+    if VERBOSE >= level:
+        out(f"[-] {msg}", Color.YELLOW)
+
+
+def dbg(level, msg):
+    """Debug message shown only when DEBUG >= level (-d, -dd, -ddd)."""
+    if DEBUG >= level:
+        out(paint(f"[DEBUG] {msg}", Color.DIM))
 
 
 def timestamp():
