@@ -69,10 +69,25 @@ def test_build_cmd_connect():
     assert cmd[0] == "nmap"
     assert "-sT" in cmd
     assert "-Pn" in cmd
+    assert "-n" in cmd
     assert cmd[cmd.index("-p") + 1] == "22,80"
     assert "--host-timeout" in cmd
     assert cmd[cmd.index("--host-timeout") + 1] == "30.0s"
     assert cmd[-3:] == ["-oX", "-", "10.0.0.5"]
+
+
+def test_build_cmd_no_dns_and_no_default_host_timeout():
+    cmd = ne._build_cmd("10.0.0.5", [22], bin_path="nmap")
+    assert "-n" in cmd
+    assert "--host-timeout" not in cmd
+    assert "-sV" not in cmd
+
+
+def test_build_cmd_version_intensity():
+    cmd = ne._build_cmd("10.0.0.5", [22], version_detect=True,
+                        version_intensity=3, bin_path="nmap")
+    assert "-sV" in cmd
+    assert cmd[cmd.index("--version-intensity") + 1] == "3"
 
 
 def test_build_cmd_syn_and_version_detect():
@@ -91,6 +106,13 @@ def test_build_cmd_udp():
 def test_build_cmd_no_ports_means_all():
     cmd = ne._build_cmd("10.0.0.5", [], bin_path="nmap")
     assert cmd[cmd.index("-p") + 1] == "1-65535"
+
+
+def test_port_spec_collapses_ranges():
+    assert ne._port_spec([22, 80, 443]) == "22,80,443"
+    assert ne._port_spec([20, 21, 22, 80]) == "20-22,80"
+    assert ne._port_spec(list(range(1, 65536))) == "1-65535"
+    assert ne._port_spec([]) == "1-65535"
 
 
 def test_estimate_timeout_honours_host_timeout():

@@ -128,6 +128,7 @@ class ScanConfig:
     udp_ping: bool = False              # -PU
     randomize: bool = False             # --randomize scan order
     aggressive: bool = False            # -A
+    version_detect: bool = False        # -sV / -A
     version_intensity: int = 7          # -sV / --version-intensity 0-9
     run_id: str = ""
     grepable_path: str = ""             # -oG output file

@@ -163,8 +163,7 @@ class Hardener:
         ports = self.cfg.ports or config.DEFAULT_PORTS
         use_nmap = self.cfg.use_nmap and nmap_available()
         if use_nmap:
-            v_info(1, "nmap backend detected on PATH; using nmap for port "
-                       "scanning (fall back with --no-nmap).")
+            info("Using nmap backend for port scanning (disable with --no-nmap).")
         for h in alive_hosts:
             deadline = (time.time() + self.cfg.host_timeout
                         if self.cfg.host_timeout > 0 else 0)
@@ -173,7 +172,8 @@ class Hardener:
                     h.ip, ports, timeout=self.cfg.timeout,
                     timing=self.cfg.timing, scan_type=self.cfg.scan_type,
                     retries=self.cfg.max_retries,
-                    version_detect=self.cfg.version_intensity > 0,
+                    version_detect=self.cfg.version_detect,
+                    version_intensity=self.cfg.version_intensity,
                     host_timeout=self.cfg.host_timeout,
                 )
             else:

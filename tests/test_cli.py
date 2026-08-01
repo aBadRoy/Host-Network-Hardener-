@@ -137,3 +137,10 @@ def test_resolve_scan_type_keeps_explicit_choice():
     assert resolve_scan_type(True, True, "ack") == "ack"
     assert resolve_scan_type(True, False, "null") == "null"
     assert resolve_scan_type(False, False, "connect") == "connect"
+
+
+def test_parser_version_detect_flags():
+    args = build_parser().parse_args(["-sV", "-t", "127.0.0.1"])
+    assert args.version_detect is True
+    args = build_parser().parse_args(["-t", "127.0.0.1"])
+    assert args.version_detect is False

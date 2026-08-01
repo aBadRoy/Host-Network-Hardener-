@@ -20,6 +20,12 @@ All notable changes to this project are documented here. The format is based on
 
 - `-A` / `--syn` now switch the TCP technique to SYN (`-sS` via nmap) instead
   of silently continuing with a connect scan when raw sockets are unavailable.
+- Service/version detection is now opt-in via `-sV` / `-A` (nmap-style) instead
+  of always running; `-sV` is wired through to nmap `-sV` with
+  `--version-intensity` when a custom intensity is set.
+- The nmap backend scans by IP with `-n` (no reverse-DNS) so a slow or missing
+  resolver cannot stall or abort a scan, and port lists are collapsed to nmap
+  range notation (keeps `-p-` command lines short).
 
 ### Fixed
 
@@ -29,6 +35,10 @@ All notable changes to this project are documented here. The format is based on
 - The `ping` binary fallback in host discovery now uses POSIX flags
   (`-c`/`-W`) on Linux/macOS instead of Windows `-n`/`-w`, so ICMP discovery
   works correctly on Kali and other Unix-like systems.
+- A default `--host-timeout` is no longer forced on nmap runs, which previously
+  could abort scans of slow or DNS-blocked hosts before any port was probed
+  (reported as "0 open ports" against otherwise-open targets such as
+  Metasploitable).
 
 ## [1.1.0] - 2026-08
 

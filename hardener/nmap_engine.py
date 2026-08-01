@@ -118,29 +118,45 @@ def _estimate_timeout(port_count, timing, host_timeout):
     return max(60, min(est, 1800))
 
 
+def _port_spec(ports):
+    """Collapse a port list into nmap -p range notation (keeps argv short)."""
+    if not ports:
+        return "1-65535"
+    runs = []
+    start = prev = ports[0]
+    for p in ports[1:]:
+        if p == prev + 1:
+            prev = p
+            continue
+        runs.append(f"{start}-{prev}" if start != prev else str(start))
+        start = prev = p
+    runs.append(f"{start}-{prev}" if start != prev else str(start))
+    return ",".join(runs)
+
+
 def _build_cmd(ip, ports, scan_type="connect", timing=3, timeout=2.0,
-               retries=0, version_detect=False, host_timeout=0.0, udp=False,
-               bin_path=None):
+               retries=0, version_detect=False, version_intensity=7,
+               host_timeout=0.0, udp=False, bin_path=None):
     technique = _TECHNIQUE_FLAGS.get(scan_type, "sT")
     nmap = bin_path or _NMAP_BIN or "nmap"
-    cmd = [nmap, "-Pn", f"-{technique}"]
+    # -n: scan by IP without reverse-DNS so a slow/unreachable resolver
+    # cannot stall (or, with a host timeout, abort) the scan before ports
+    # are probed.
+    cmd = [nmap, "-Pn", "-n", f"-{technique}"]
     if udp:
-        cmd = [nmap, "-Pn", "-sU"]
+        cmd = [nmap, "-Pn", "-n", "-sU"]
         if scan_type == "connect":
             cmd.append("-sT")
     cmd += ["-T%d" % max(0, min(timing, 5))]
     cmd.append("-p")
-    if ports:
-        cmd.append(",".join(str(p) for p in ports))
-    else:
-        cmd.append("1-65535")
+    cmd.append(_port_spec(ports))
     cmd += ["--max-retries", str(max(0, retries))]
     if host_timeout and host_timeout > 0:
         cmd += ["--host-timeout", f"{host_timeout}s"]
-    else:
-        cmd += ["--host-timeout", f"{max(timeout, 2.0) * 2}s"]
     if version_detect:
         cmd.append("-sV")
+        if version_intensity != 7:
+            cmd += ["--version-intensity", str(max(0, min(version_intensity, 9)))]
     cmd += ["-oX", "-", ip]
     return cmd
 
@@ -166,12 +182,14 @@ def _run_nmap(cmd, port_count, timing, host_timeout):
 
 
 def nmap_tcp_scan(ip, ports, timeout=2.0, timing=3, scan_type="connect",
-                  retries=0, version_detect=False, host_timeout=0.0,
-                  limiter=None):
+                  retries=0, version_detect=False, version_intensity=7,
+                  host_timeout=0.0, limiter=None):
     """Scan TCP ports with nmap; returns list of PortResult (empty if down)."""
     cmd = _build_cmd(ip, ports, scan_type=scan_type, timing=timing,
                      timeout=timeout, retries=retries,
-                     version_detect=version_detect, host_timeout=host_timeout)
+                     version_detect=version_detect,
+                     version_intensity=version_intensity,
+                     host_timeout=host_timeout)
     stdout, _stderr = _run_nmap(cmd, len(ports), timing, host_timeout)
     if not stdout:
         warn(f"nmap produced no output for {ip}.")
@@ -189,6 +207,15 @@ def nmap_tcp_scan(ip, ports, timeout=2.0, timing=3, scan_type="connect",
         ok(f"{ip}: {len(open_ports)} open TCP port(s): {open_ports}")
     else:
         warn(f"{ip}: no open TCP ports in scanned set.")
+    for r in sorted(results, key=lambda x: x.port):
+        if r.state == "open":
+            line = f"  {r.port:6d}/tcp   {r.service}"
+            note = r.scan_evidence.get("note")
+            if note:
+                line += f"   reason: {note}"
+            if r.version:
+                line += f"   {r.version}"
+            low_pri(line)
     return results
 
 

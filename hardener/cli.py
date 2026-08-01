@@ -312,6 +312,7 @@ def main(argv=None):
         udp_ping=probes["udp"],
         randomize=args.randomize,
         aggressive=args.aggressive,
+        version_detect=args.version_detect,
         version_intensity=args.version_intensity,
         grepable_path=args.grepable,
         exclude_list=args.exclude,
