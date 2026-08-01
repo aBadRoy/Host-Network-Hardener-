@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- Grepable output (`-oG`) no longer breaks across lines when a service banner
+  contains embedded newlines (e.g. Telnet negotiation sequences); banners are
+  now collapsed to a single line.
+
 ## [1.1.0] - 2026-08
 
 ### Added

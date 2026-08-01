@@ -76,3 +76,16 @@ def test_grepable_output():
     assert "Status: Up" in text
     assert "22/open/tcp//SSH//" in text
     assert "10.0.0.5" in text
+
+
+def test_grepable_single_line_with_newline_in_banner():
+    report = _sample_report()
+    report.hosts[0].ports.append(
+        PortResult(port=2323, protocol="tcp", state="open", service="Telnet",
+                   version="?? ?? ??#?? \r\n\r\nTelnet mock login: "))
+    text = render_grepable(report)
+    port_lines = [l for l in text.splitlines() if l.startswith("Host:") and "Ports:" in l]
+    assert len(port_lines) == 1
+    assert "Telnet mock login:" in port_lines[0]
+    assert "\nTelnet" not in text
+    assert text.count("Ports:") == 1

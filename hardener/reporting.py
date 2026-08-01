@@ -11,7 +11,7 @@ import os
 import re
 import xml.etree.ElementTree as ET
 
-from .utils import ensure_dir
+from .utils import ensure_dir, sanitize_text
 
 SEVERITY_COLOR = {
     "informational": "#6c757d",
@@ -278,6 +278,13 @@ def _render_html(report):
 # Grepable output (nmap -oG style)
 # ---------------------------------------------------------------------------
 
+def _grep_safe(text):
+    """Collapse to a single line: strip control chars and embedded newlines."""
+    if text is None:
+        return ""
+    return sanitize_text(text).replace("\r", " ").replace("\n", " ")
+
+
 def render_grepable(report):
     """Render nmap-grepable output (one line per host, 'Ports:' field)."""
     lines = []
@@ -294,8 +301,8 @@ def render_grepable(report):
             entries = []
             for p in sorted(ports, key=lambda x: x.port):
                 entries.append(
-                    f"{p.port}/open/{p.protocol}//{p.service}/"
-                    f"/{'' if p.version is None else p.version}")
+                    f"{p.port}/open/{p.protocol}//{_grep_safe(p.service)}/"
+                    f"/{_grep_safe('' if p.version is None else p.version)}")
             lines.append(f"Host: {label}\tPorts: {', '.join(entries)}")
     lines.append(f"# {report.tool_name} done at {report.finished_at or '--'} -- "
                  f"{len(report.hosts)} IP address(es) scanned in "
@@ -304,7 +311,6 @@ def render_grepable(report):
 
 
 def write_grepable(report, path):
-    from .utils import ensure_dir
     ensure_dir(os.path.dirname(path) or ".")
     return _write(path, render_grepable(report))
 
