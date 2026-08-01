@@ -19,8 +19,9 @@ multiple formats.
 - **10-phase assessment workflow**
   1. Input intake & scope validation (authorization gate)
   2. DNS & infrastructure discovery (A/AAAA/MX/NS/TXT/SOA/CNAME, subdomains, CDN/WAF detection)
-  3. Host discovery (ICMP, TCP ping, HTTP probe)
-  4. Port scanning — TCP connect, TCP SYN (scapy) and UDP; **full 0–65535 range supported**
+  3. Host discovery (ICMP, TCP SYN/ACK ping, UDP ping, HTTP probe; `-sn` ping sweep)
+  4. Port scanning — TCP connect, TCP SYN (scapy) plus stateless **ACK, NULL, FIN and XMAS**
+     scans and UDP; **full 0–65535 range supported** with `-p-`
   5. Service enumeration — per-protocol probes (SSH, FTP, Telnet, SMTP, POP3, IMAP, LDAP,
      SMB, Kerberos, Oracle, MySQL, PostgreSQL, Redis, MongoDB, Elasticsearch, Memcached,
      VNC, RDP, MSSQL, DNS) + generic banner grabbing
@@ -31,7 +32,16 @@ multiple formats.
   9. Risk scoring & prioritization
   10. Report generation & remediation guidance
 
-- **Reports**: TXT, JSON, XML, CSV and HTML (executive + technical)
+- **Scan techniques**: `-sV` version detection, `-A` aggressive mode, `--banners`, `--reason`
+  (why a port is in its state), `--open` (only report open ports), `--randomize` scan order
+- **Port selection**: `-F` fast scan, `--top-ports N`, `-p`/`-p-` ranges, `--exclude-ports`,
+  `--exclude` (repeatable), `-iL` target list, `--scope-file` YAML/JSON scope
+- **Timing & performance**: nmap-style `-T0..-T5` timing templates, `--max-rate`/`--min-rate`
+  (masscan-style PPS rate limiting), `--max-retries`, `--host-timeout`, `--stats-every`
+- **Audit trail**: append-only `audit.log` records every action per run
+- **Verbose / debug**: `-v/-vv/-vvv` and `-d/-dd/-ddd` increasing console detail
+- **Reports**: TXT, JSON, XML, CSV, HTML (executive + technical) and nmap-style grepable
+  output with `-oG`
 - **Scope enforcement**: allowed/excluded networks, scan windows, rate limits
 - **Threaded scanning** for speed; colorized console output
 
@@ -280,7 +290,7 @@ network_hardener/
     ├── scope_validator.py     # authorization gate & scope rules
     ├── dns_discovery.py       # DNS records, subdomains, CDN/WAF
     ├── host_discovery.py      # alive checks
-    ├── port_scanner.py        # TCP/SYN/UDP scanning
+    ├── port_scanner.py        # connect/SYN/ACK/NULL/FIN/XMAS/UDP scanning
     ├── service_enum.py        # per-protocol probes
     ├── http_audit.py          # HTTP security checks
     ├── tls_audit.py           # TLS/certificate checks
@@ -289,7 +299,9 @@ network_hardener/
     ├── security_analysis.py   # finding generation
     ├── risk_engine.py         # scoring & prioritization
     ├── remediation.py         # fix guidance
-    ├── reporting.py           # TXT/JSON/XML/CSV/HTML export
+    ├── reporting.py           # TXT/JSON/XML/CSV/HTML/grepable export
+    ├── audit.py               # append-only audit trail
+    ├── ratelimit.py           # packet-per-second rate limiter
     ├── models.py              # dataclasses
     └── utils.py               # shared helpers
 ```
