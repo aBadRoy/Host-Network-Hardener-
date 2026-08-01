@@ -1,0 +1,1 @@
+{"allowed": ["10.0.0.0/8"], "excluded": [], "rate_limit": 500, "window": "00:00-23:59"}

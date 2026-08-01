@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Scan outputs / logs
+reports_*/
+*.log
+
+# Secrets / tokens
+token.txt
+*.token
+*.pem
+
+# OS noise
+.DS_Store
+Thumbs.db
